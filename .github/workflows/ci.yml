@@ -1,0 +1,75 @@
+name: Firmware CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: zephyrprojectrtos/ci:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install pyserial
+          apt-get update && apt-get install -y cmake gcc g++
+
+      - name: Build unit tests
+        working-directory: firmware
+        run: |
+          mkdir -p build && cd build
+          cmake -DBUILD_TESTS=ON ..
+          make -j$(nproc)
+
+      - name: Run unit tests
+        working-directory: firmware/build
+        run: |
+          ctest --output-on-failure --timeout 60
+
+      - name: Static analysis
+        working-directory: firmware
+        run: |
+          # Run cppcheck for MISRA C compliance checking
+          cppcheck --enable=all --std=c11 \
+            --suppress=missingIncludeSystem \
+            --error-exitcode=1 \
+            -I include -I src \
+            src/
+
+      - name: Build production firmware
+        working-directory: firmware
+        run: |
+          rm -rf build && mkdir build && cd build
+          cmake -DCMAKE_TOOLCHAIN_FILE=../arm-toolchain.cmake ..
+          make -j$(nproc)
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgm3000-firmware-${{ github.sha }}
+          path: firmware/build/zephyr/zephyr.hex
+
+  python-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Lint Python tools
+        run: |
+          pip install ruff
+          ruff check tools/
+
+      - name: Type check Python tools
+        run: |
+          pip install mypy pyserial
+          mypy tools/ --ignore-missing-imports
