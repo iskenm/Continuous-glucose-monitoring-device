@@ -111,3 +111,6 @@ This project follows:
 ## License
 
 Proprietary - GlucoSense Medical Devices, Inc. All rights reserved.
+
+---
+*Last updated: March 2026*
